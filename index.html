@@ -563,21 +563,58 @@
       }, ms);
     }
 
-    // ---------- Audio gate ----------
-    const audioGate = document.getElementById("audioGate");
-    const bgm = document.getElementById("bgm");
-    let audioStarted = false;
+   // ---------- Audio gate (LATEST / more reliable) ----------
+const audioGate = document.getElementById("audioGate");
+const bgm = document.getElementById("bgm");
 
-    audioGate.addEventListener("click", async () => {
-      try{
-        await bgm.play();
-        audioStarted = true;
-        audioGate.style.display = "none";
-      }catch(e){
-        // If mp3 missing or blocked
-        popStory("Music couldn’t start. Put an MP3 at /assets/music.mp3 (or use YouTube embed option).", 4200);
-      }
-    });
+function hideAudioGate() {
+  if (!audioGate) return;
+  audioGate.style.display = "none";
+}
+
+// Smooth fade-in (feels more “background”)
+async function startMusic() {
+  if (!bgm) {
+    popStory("No <audio id='bgm'> found in index.html.", 4200);
+    return;
+  }
+
+  try {
+    bgm.loop = true;
+
+    // start quiet, then fade to background volume
+    bgm.volume = 0.0;
+    await bgm.play();
+
+    hideAudioGate();
+
+    let v = 0.0;
+    const target = 0.35; // background level
+    const fade = setInterval(() => {
+      v += 0.02;
+      bgm.volume = Math.min(v, target);
+      if (v >= target) clearInterval(fade);
+    }, 80);
+
+    // prevent double triggers
+    document.removeEventListener("click", startMusic);
+    document.removeEventListener("touchstart", startMusic);
+  } catch (e) {
+    popStory("Music couldn’t start. Check: assets/music.mp3 is a REAL mp3 file (not text).", 4500);
+  }
+}
+
+// Click button OR click anywhere once
+if (audioGate) audioGate.addEventListener("click", startMusic);
+document.addEventListener("click", startMusic);
+document.addEventListener("touchstart", startMusic);
+
+// Mute when tab hidden (optional but nice)
+document.addEventListener("visibilitychange", () => {
+  if (!bgm) return;
+  bgm.muted = document.hidden;
+});
+
 
     // ---------- Optional YouTube embed (replace VIDEO_ID) ----------
     // If you want this, uncomment the iframe below and comment out the <audio> element above.
