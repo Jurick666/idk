@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Flower of Seasons</title>
+  <style>
+    html, body { margin:0; padding:0; height:100%; background:#000; overflow:hidden; }
+    #app { position:fixed; inset:0; }
+
+    /* Cinematic overlay for crossfades + text readability */
+    .vignette {
+      pointer-events:none;
+      position:fixed; inset:0;
+      background: radial-gradient(circle at 50% 45%, rgba(0,0,0,0) 0%, rgba(0,0,0,.25) 45%, rgba(0,0,0,.55) 100%);
+      mix-blend-mode: multiply;
+    }
+
+    /* UI layer */
+    #ui { position:fixed; inset:0; pointer-events:none; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    #signature {
+      position:fixed; left:18px; bottom:16px;
+      color:rgba(255,255,255,.78);
+      font-size:14px; letter-spacing:.6px;
+      text-shadow: 0 1px 10px rgba(0,0,0,.55);
+      pointer-events:none;
+      user-select:none;
+    }
+
+    /* “Start audio” button (required for autoplay on most browsers) */
+    #audioGate {
+      pointer-events:auto;
+      position:fixed; right:18px; bottom:16px;
+      display:flex; gap:10px; align-items:center;
+      padding:10px 12px;
+      background: rgba(15,15,20,.55);
+      border: 1px solid rgba(255,255,255,.12);
+      backdrop-filter: blur(10px);
+      border-radius: 999px;
+      color: rgba(255,255,255,.92);
+      font-size: 13px;
+      cursor:pointer;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+      user-select:none;
+    }
+    #audioDot {
+      width:10px; height:10px; border-radius:999px;
+      background: rgba(255,255,255,.25);
+      box-shadow: 0 0 0 0 rgba(255,255,255,.35);
+      animation: pulse 1.2s infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(255,255,255,.35); }
+      70% { box-shadow: 0 0 0 10px rgba(255,255,255,0); }
+      100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+    }
+
+    /* Quote system */
+    #quoteWrap {
+      position:fixed; left:22px; top:20px;
+      max-width: 520px;
+      color: rgba(255,255,255,.92);
+      text-shadow: 0 2px 14px rgba(0,0,0,.65);
+      pointer-events:none;
+      user-select:none;
+    }
+    .quote {
+      opacity:0;
+      transform: translateY(10px);
+      margin: 0 0 12px 0;
+      line-height:1.3;
+    }
+    .quote .meta {
+      font-size: 12px;
+      opacity:.7;
+      letter-spacing:.4px;
+      margin-bottom:4px;
+    }
+    .quote .text {
+      font-size: 20px;
+      letter-spacing:.2px;
+    }
+
+    /* Different quote “styles” */
+    .style-typing .text { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .style-float .text { filter: drop-shadow(0 2px 14px rgba(0,0,0,.5)); }
+    .style-shimmer .text {
+      background: linear-gradient(90deg, rgba(255,255,255,.55), rgba(255,255,255,1), rgba(255,255,255,.55));
+      -webkit-background-clip:text;
+      background-clip:text;
+      color: transparent;
+      background-size: 220% 100%;
+      animation: shimmer 2.6s linear infinite;
+    }
+    @keyframes shimmer {
+      0% { background-position: 0% 0%; }
+      100% { background-position: 220% 0%; }
+    }
+
+    /* Soft season label (top-right) */
+    #seasonLabel {
+      position:fixed; right:20px; top:20px;
+      padding:10px 12px;
+      background: rgba(15,15,20,.35);
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+      color: rgba(255,255,255,.9);
+      font-size: 13px;
+      letter-spacing:.8px;
+      text-transform: uppercase;
+      pointer-events:none;
+      user-select:none;
+      opacity:.95;
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+
+    /* “Mother cat left” story caption */
+    #story {
+      position:fixed;
+      left:50%; bottom:80px;
+      transform: translateX(-50%);
+      padding: 10px 14px;
+      background: rgba(0,0,0,.28);
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 999px;
+      color: rgba(255,255,255,.85);
+      font-size: 13px;
+      letter-spacing:.3px;
+      opacity: 0;
+      backdrop-filter: blur(10px);
+      pointer-events:none;
+      user-select:none;
+      text-shadow: 0 2px 10px rgba(0,0,0,.65);
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div class="vignette"></div>
+
+  <div id="ui">
+    <div id="quoteWrap"></div>
+    <div id="seasonLabel">Loading…</div>
+    <div id="story"></div>
+    <div id="signature">~Your beloved jurick</div>
+
+    <div id="audioGate" title="Tap to start music (browser autoplay rule)">
+      <div id="audioDot"></div>
+      <div>Tap to start music</div>
+    </div>
+  </div>
+
+  <!-- Recommended: local mp3 -->
+  <audio id="bgm" src="./assets/music.mp3" preload="auto" loop></audio>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+    import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js";
+    import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/RenderPass.js";
+    import { UnrealBloomPass } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js";
+
+    // ---------- Helpers ----------
+    const clamp01 = (x) => Math.max(0, Math.min(1, x));
+    const lerp = (a,b,t) => a + (b-a)*t;
+    const now = () => performance.now() / 1000;
+
+    function rand(min, max){ return Math.random() * (max - min) + min; }
+    function pick(arr){ return arr[(Math.random()*arr.length)|0]; }
+
+    // ---------- 4K / HD Setup ----------
+    const container = document.getElementById("app");
+    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false, powerPreference:"high-performance" });
+    renderer.setPixelRatio(Math.min(2.25, window.devicePixelRatio || 1)); // good “HD” while staying stable
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x05060a, 0.03);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 200);
+    camera.position.set(0, 2.3, 8.6);
+
+    // Postprocessing for “cinematic HD”
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.7, 0.85);
+    composer.addPass(bloom);
+
+    // ---------- Lights ----------
+    const key = new THREE.DirectionalLight(0xffffff, 1.1);
+    key.position.set(4, 8, 4);
+    scene.add(key);
+
+    const fill = new THREE.DirectionalLight(0xffffff, 0.5);
+    fill.position.set(-6, 4, -5);
+    scene.add(fill);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.25);
+    scene.add(ambient);
+
+    // ---------- Sky Dome ----------
+    const skyGeo = new THREE.SphereGeometry(90, 64, 64);
+    const skyMat = new THREE.MeshBasicMaterial({ color: 0x0b1020, side: THREE.BackSide });
+    const sky = new THREE.Mesh(skyGeo, skyMat);
+    scene.add(sky);
+
+    // ---------- Ground ----------
+    const groundGeo = new THREE.CircleGeometry(18, 96);
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x0d1b12, roughness: 0.95, metalness: 0.0
+    });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI/2;
+    ground.position.y = 0;
+    scene.add(ground);
+
+    // ---------- “Decor” meshes ----------
+    // Small stones / petals / sparkles around the flower
+    const decor = new THREE.Group();
+    scene.add(decor);
+
+    function buildDecorRing() {
+      decor.clear();
+      const count = 180;
+      for (let i=0;i<count;i++){
+        const s = rand(0.01, 0.05);
+        const geo = new THREE.SphereGeometry(1, 8, 8);
+        const mat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color().setHSL(rand(0.08,0.14), rand(0.2,0.7), rand(0.2,0.6)),
+          roughness: 0.9, metalness: 0.0
+        });
+        const m = new THREE.Mesh(geo, mat);
+        const r = rand(0.7, 5.5);
+        const a = rand(0, Math.PI*2);
+        m.scale.setScalar(s);
+        m.position.set(Math.cos(a)*r, rand(0.01, 0.06), Math.sin(a)*r);
+        decor.add(m);
+      }
+    }
+    buildDecorRing();
+
+    // ---------- Flower (procedural) ----------
+    const flower = new THREE.Group();
+    flower.position.set(0, 0, 0);
+    scene.add(flower);
+
+    const stemMat = new THREE.MeshStandardMaterial({ color: 0x2c7a4b, roughness:0.9 });
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 4.0, 16), stemMat);
+    stem.position.y = 2.0;
+    flower.add(stem);
+
+    // Leaves
+    const leafMat = new THREE.MeshStandardMaterial({ color: 0x2f8a56, roughness:0.9, side:THREE.DoubleSide });
+    const leafGeo = new THREE.PlaneGeometry(0.9, 0.45, 1, 1);
+    const leaf1 = new THREE.Mesh(leafGeo, leafMat);
+    leaf1.position.set(0.35, 1.4, 0.15);
+    leaf1.rotation.set(0.2, 0.6, 0.35);
+    flower.add(leaf1);
+
+    const leaf2 = leaf1.clone();
+    leaf2.position.set(-0.35, 2.0, -0.10);
+    leaf2.rotation.set(-0.2, -0.7, -0.25);
+    flower.add(leaf2);
+
+    // Head base
+    const head = new THREE.Group();
+    head.position.set(0, 4.05, 0);
+    flower.add(head);
+
+    const coreMat = new THREE.MeshStandardMaterial({ color: 0xffd24a, roughness:0.5, metalness:0.05, emissive:0x2a2408, emissiveIntensity:0.4 });
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.18, 20, 20), coreMat);
+    head.add(core);
+
+    // Petals
+    const petals = new THREE.Group();
+    head.add(petals);
+
+    const petalGeo = new THREE.PlaneGeometry(0.45, 1.05, 1, 1);
+    const petalMat = new THREE.MeshStandardMaterial({
+      color: 0xff6fb1, roughness: 0.55, metalness:0.05,
+      side: THREE.DoubleSide,
+      emissive: 0x14040b, emissiveIntensity: 0.25
+    });
+
+    const PETAL_COUNT = 12;
+    const petalMeshes = [];
+    for (let i=0;i<PETAL_COUNT;i++){
+      const p = new THREE.Mesh(petalGeo, petalMat.clone());
+      const ang = (i / PETAL_COUNT) * Math.PI*2;
+      p.position.set(Math.cos(ang)*0.34, 0, Math.sin(ang)*0.34);
+      p.rotation.set(rand(-0.15, 0.15), ang + Math.PI, rand(-0.35, 0.35));
+      p.scale.set(1, 0.1, 1); // start “closed”
+      petals.add(p);
+      petalMeshes.push(p);
+    }
+
+    // “Seed” — tiny sphere at ground that rises into stem
+    const seedMat = new THREE.MeshStandardMaterial({ color: 0x6a3b1f, roughness:0.95 });
+    const seed = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 16), seedMat);
+    seed.position.set(0, 0.08, 0);
+    scene.add(seed);
+
+    // ---------- Cat mini-story (simple stylized meshes) ----------
+    const cat = new THREE.Group();
+    cat.position.set(2.7, 0.1, 1.0);
+    scene.add(cat);
+
+    function makeCat(color=0x22252b){
+      const g = new THREE.Group();
+      const mat = new THREE.MeshStandardMaterial({ color, roughness:0.9 });
+
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 18, 18), mat);
+      body.scale.set(1.2, 0.9, 1.0);
+      body.position.y = 0.22;
+      g.add(body);
+
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 18, 18), mat);
+      head.position.set(0.25, 0.36, 0.0);
+      g.add(head);
+
+      const earGeo = new THREE.ConeGeometry(0.08, 0.12, 10);
+      const ear1 = new THREE.Mesh(earGeo, mat);
+      ear1.position.set(0.18, 0.52, 0.08);
+      ear1.rotation.set(0, 0.2, 0.2);
+      g.add(ear1);
+
+      const ear2 = ear1.clone();
+      ear2.position.set(0.18, 0.52, -0.08);
+      ear2.rotation.set(0, -0.2, 0.2);
+      g.add(ear2);
+
+      const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.42, 12), mat);
+      tail.position.set(-0.28, 0.30, 0);
+      tail.rotation.z = 0.85;
+      g.add(tail);
+
+      return g;
+    }
+
+    const kitten = makeCat(0x2d2f36);
+    kitten.scale.setScalar(0.45); // grows over time
+    cat.add(kitten);
+
+    // mother silhouette appears briefly then “leaves”
+    const mother = makeCat(0x0b0b0e);
+    mother.scale.setScalar(0.9);
+    mother.position.set(1.0, 0, -0.2);
+    mother.traverse(o=>{
+      if (o.material) {
+        o.material = o.material.clone();
+        o.material.emissive = new THREE.Color(0x000000);
+      }
+    });
+    mother.visible = false;
+    cat.add(mother);
+
+    // ---------- Weather particles ----------
+    const particleGroup = new THREE.Group();
+    scene.add(particleGroup);
+
+    function makeParticles(count, color, size=0.025){
+      const geo = new THREE.BufferGeometry();
+      const pos = new Float32Array(count*3);
+      const vel = new Float32Array(count*3);
+
+      for (let i=0;i<count;i++){
+        pos[i*3+0] = rand(-10, 10);
+        pos[i*3+1] = rand(0, 10);
+        pos[i*3+2] = rand(-10, 10);
+        vel[i*3+0] = rand(-0.03, 0.03);
+        vel[i*3+1] = rand(-0.22, -0.05);
+        vel[i*3+2] = rand(-0.03, 0.03);
+      }
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute("velocity", new THREE.BufferAttribute(vel, 3));
+
+      const mat = new THREE.PointsMaterial({
+        color,
+        size,
+        transparent:true,
+        opacity:0.85,
+        depthWrite:false
+      });
+      const pts = new THREE.Points(geo, mat);
+      return pts;
+    }
+
+    const rain = makeParticles(1600, 0x9bd0ff, 0.02);
+    const snow = makeParticles(1200, 0xffffff, 0.04);
+    const pollen = makeParticles(900, 0xfff2a8, 0.03); // spring sparkles
+    const leaves = makeParticles(900, 0xffb14a, 0.035);
+
+    particleGroup.add(rain, snow, pollen, leaves);
+
+    // ---------- Season system (changes every 4–5 seconds) ----------
+    const seasonLabel = document.getElementById("seasonLabel");
+
+    const SEASONS = [
+      {
+        name: "Spring / Warm Breeze",
+        sky: 0x1c2a45, fog: 0.028, ground: 0x102316,
+        petal: 0xff6fb1, core: 0xffd24a,
+        weather: { rain:0.05, snow:0.0, pollen:1.0, leaves:0.2 },
+        light: { key: 1.15, fill: 0.55, ambient: 0.28 },
+        decorHue: [0.08, 0.14]
+      },
+      {
+        name: "Summer / Clear Night",
+        sky: 0x071025, fog: 0.018, ground: 0x0b2216,
+        petal: 0xff4f7e, core: 0xffdf66,
+        weather: { rain:0.15, snow:0.0, pollen:0.35, leaves:0.05 },
+        light: { key: 1.25, fill: 0.65, ambient: 0.30 },
+        decorHue: [0.10, 0.16]
+      },
+      {
+        name: "Autumn / Falling Leaves",
+        sky: 0x1b0c12, fog: 0.032, ground: 0x241a10,
+        petal: 0xff7a3d, core: 0xffd24a,
+        weather: { rain:0.10, snow:0.0, pollen:0.0, leaves:1.0 },
+        light: { key: 1.05, fill: 0.48, ambient: 0.25 },
+        decorHue: [0.04, 0.08]
+      },
+      {
+        name: "Winter / Quiet Snow",
+        sky: 0x061426, fog: 0.040, ground: 0x0b1016,
+        petal: 0xbfd6ff, core: 0xf6f0cc,
+        weather: { rain:0.0, snow:1.0, pollen:0.0, leaves:0.0 },
+        light: { key: 0.95, fill: 0.55, ambient: 0.24 },
+        decorHue: [0.55, 0.62]
+      }
+    ];
+
+    let currentSeason = 0;
+    let targetSeason = 0;
+    let seasonMix = 1; // 1 = fully target
+    let seasonChangeAt = now() + rand(4, 5);
+
+    function applySeasonImmediate(s) {
+      sky.material.color.setHex(s.sky);
+      scene.fog.density = s.fog;
+      ground.material.color.setHex(s.ground);
+      seasonLabel.textContent = s.name;
+
+      key.intensity = s.light.key;
+      fill.intensity = s.light.fill;
+      ambient.intensity = s.light.ambient;
+
+      // petals / core
+      petalMeshes.forEach(p => p.material.color.setHex(s.petal));
+      core.material.color.setHex(s.core);
+
+      // decor refresh hue range (subtle change)
+      buildDecorRing();
+      decor.children.forEach(m=>{
+        const h = rand(s.decorHue[0], s.decorHue[1]);
+        m.material.color.setHSL(h, rand(0.25,0.75), rand(0.18,0.62));
+      });
+    }
+
+    applySeasonImmediate(SEASONS[0]);
+
+    // ---------- Flower lifecycle ----------
+    // 0..30s: grow + open
+    // 30..60s: dry + droop
+    const GROW_DURATION = 30.0;
+    const DRY_DURATION  = 30.0;
+    const CYCLE = GROW_DURATION + DRY_DURATION;
+    let cycleStart = now();
+
+    function flowerPhase(tCycle){
+      // returns { grow01, bloom01, dry01 }
+      const grow01 = clamp01(tCycle / GROW_DURATION);
+      const bloom01 = clamp01((tCycle - 6.0) / 18.0); // petals start opening a bit after growth begins
+      const dry01  = clamp01((tCycle - GROW_DURATION) / DRY_DURATION);
+      return { grow01, bloom01, dry01 };
+    }
+
+    // ---------- Quotes ----------
+    const quoteWrap = document.getElementById("quoteWrap");
+
+    const QUOTES = [
+      { text: "Sometimes it’s okay not to be okay.", style:"typing" },
+      { text: "The early bird catches the worm; what about the early worm?", style:"float" },
+      { text: "1 + 1 doesn’t always equal 2… when someone leaves, the math changes.", style:"shimmer" },
+      { text: "The seasons change—yet our humility, soul, and spirit can stay.", style:"float" },
+      { text: "Be a champion—quietly, consistently.", style:"shimmer" },
+      { text: "In every scenario, you are still yourself.", style:"typing" },
+      { text: "A secret doesn’t mean undiscoverable. It means not yet.", style:"float" },
+
+      // extra (added)
+      { text: "Growth is loud at first… then it becomes breath.", style:"typing" },
+      { text: "Blooming is not a promise. It’s a brave moment.", style:"shimmer" },
+      { text: "Even when you dry out, you still prove you once lived.", style:"float" },
+      { text: "Weather changes every second; your heart doesn’t have to.", style:"typing" },
+      { text: "If love is a season, let it be one you survive.", style:"shimmer" },
+      { text: "You were never behind—only ripening.", style:"float" }
+    ];
+
+    let lastQuoteAt = 0;
+    let quoteIndex = 0;
+
+    function clearQuotes(){
+      quoteWrap.innerHTML = "";
+    }
+
+    function showQuote(q, phaseLabel){
+      const root = document.createElement("div");
+      root.className = `quote style-${q.style}`;
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = phaseLabel;
+      const text = document.createElement("div");
+      text.className = "text";
+      root.appendChild(meta);
+      root.appendChild(text);
+      quoteWrap.prepend(root);
+
+      // keep only last 4
+      while (quoteWrap.children.length > 4) quoteWrap.removeChild(quoteWrap.lastChild);
+
+      // Animate
+      const full = q.text;
+
+      // fade+slide in
+      root.animate(
+        [{ opacity:0, transform:"translateY(10px)" }, { opacity:1, transform:"translateY(0px)" }],
+        { duration: 650, easing:"cubic-bezier(.2,.8,.2,1)", fill:"forwards" }
+      );
+
+      if (q.style === "typing") {
+        let i = 0;
+        const speed = 18; // ms per char-ish
+        const tick = () => {
+          i++;
+          text.textContent = full.slice(0, i);
+          if (i < full.length) setTimeout(tick, speed);
+        };
+        tick();
+      } else {
+        text.textContent = full;
+      }
+
+      // auto fade out after a bit
+      setTimeout(()=>{
+        root.animate(
+          [{ opacity:1 }, { opacity:0 }],
+          { duration: 900, easing:"ease-out", fill:"forwards" }
+        );
+      }, 7000);
+    }
+
+    // ---------- Story caption ----------
+    const story = document.getElementById("story");
+    function popStory(msg, ms=3600){
+      story.textContent = msg;
+      story.animate([{opacity:0, transform:"translateX(-50%) translateY(10px)"},{opacity:1, transform:"translateX(-50%) translateY(0px)"}],
+        {duration:500, fill:"forwards", easing:"cubic-bezier(.2,.8,.2,1)"});
+      setTimeout(()=>{
+        story.animate([{opacity:1},{opacity:0}],{duration:600, fill:"forwards", easing:"ease-out"});
+      }, ms);
+    }
+
+    // ---------- Audio gate ----------
+    const audioGate = document.getElementById("audioGate");
+    const bgm = document.getElementById("bgm");
+    let audioStarted = false;
+
+    audioGate.addEventListener("click", async () => {
+      try{
+        await bgm.play();
+        audioStarted = true;
+        audioGate.style.display = "none";
+      }catch(e){
+        // If mp3 missing or blocked
+        popStory("Music couldn’t start. Put an MP3 at /assets/music.mp3 (or use YouTube embed option).", 4200);
+      }
+    });
+
+    // ---------- Optional YouTube embed (replace VIDEO_ID) ----------
+    // If you want this, uncomment the iframe below and comment out the <audio> element above.
+    // NOTE: YouTube also typically requires user interaction to start audio.
+    /*
+    const yt = document.createElement("iframe");
+    yt.width="0"; yt.height="0";
+    yt.style.position="fixed"; yt.style.left="-9999px";
+    yt.src="https://www.youtube.com/embed/VIDEO_ID?autoplay=1&loop=1&playlist=VIDEO_ID";
+    yt.allow="autoplay";
+    document.body.appendChild(yt);
+    */
+
+    // ---------- Update loop ----------
+    function updateSeasonSystem(t){
+      if (t >= seasonChangeAt) {
+        currentSeason = targetSeason;
+        targetSeason = (targetSeason + 1) % SEASONS.length;
+        seasonMix = 0;
+        seasonChangeAt = t + rand(4, 5);
+
+        // crossfade label pop
+        seasonLabel.animate([{opacity:0.3, transform:"translateY(-6px)"},{opacity:0.95, transform:"translateY(0px)"}],
+          {duration:480, fill:"forwards", easing:"cubic-bezier(.2,.8,.2,1)"});
+      }
+
+      // mix toward target
+      seasonMix = clamp01(seasonMix + 0.015);
+      const a = SEASONS[currentSeason];
+      const b = SEASONS[targetSeason];
+      const mix = seasonMix;
+
+      // colors interpolate
+      sky.material.color.lerpColors(new THREE.Color(a.sky), new THREE.Color(b.sky), mix);
+      ground.material.color.lerpColors(new THREE.Color(a.ground), new THREE.Color(b.ground), mix);
+      scene.fog.density = lerp(a.fog, b.fog, mix);
+
+      key.intensity = lerp(a.light.key, b.light.key, mix);
+      fill.intensity = lerp(a.light.fill, b.light.fill, mix);
+      ambient.intensity = lerp(a.light.ambient, b.light.ambient, mix);
+
+      // petals/core interpolate
+      const petalColor = new THREE.Color(a.petal).lerp(new THREE.Color(b.petal), mix);
+      petalMeshes.forEach(p=>p.material.color.copy(petalColor));
+      core.material.color.copy(new THREE.Color(a.core).lerp(new THREE.Color(b.core), mix));
+
+      // weather mix
+      const wxA = a.weather, wxB = b.weather;
+      const wx = {
+        rain: lerp(wxA.rain, wxB.rain, mix),
+        snow: lerp(wxA.snow, wxB.snow, mix),
+        pollen: lerp(wxA.pollen, wxB.pollen, mix),
+        leaves: lerp(wxA.leaves, wxB.leaves, mix)
+      };
+
+      rain.material.opacity   = 0.85 * wx.rain;
+      snow.material.opacity   = 0.85 * wx.snow;
+      pollen.material.opacity = 0.80 * wx.pollen;
+      leaves.material.opacity = 0.82 * wx.leaves;
+
+      // label text: show target as we approach it
+      seasonLabel.textContent = (mix > 0.5) ? b.name : a.name;
+
+      // subtle: bloom intensity
+      bloom.strength = 0.35 + 0.35 * (wx.pollen + 0.25);
+    }
+
+    function updateParticles(pts, mode){
+      const pos = pts.geometry.attributes.position;
+      const vel = pts.geometry.attributes.velocity;
+      for (let i=0;i<pos.count;i++){
+        pos.array[i*3+0] += vel.array[i*3+0];
+        pos.array[i*3+1] += vel.array[i*3+1];
+        pos.array[i*3+2] += vel.array[i*3+2];
+
+        // wrap
+        if (pos.array[i*3+1] < -0.2) {
+          pos.array[i*3+0] = rand(-10, 10);
+          pos.array[i*3+1] = rand(4, 11);
+          pos.array[i*3+2] = rand(-10, 10);
+
+          // per-type behavior
+          if (mode === "leaves") {
+            vel.array[i*3+0] = rand(-0.05, 0.05);
+            vel.array[i*3+1] = rand(-0.12, -0.03);
+            vel.array[i*3+2] = rand(-0.05, 0.05);
+          } else if (mode === "snow") {
+            vel.array[i*3+0] = rand(-0.02, 0.02);
+            vel.array[i*3+1] = rand(-0.08, -0.02);
+            vel.array[i*3+2] = rand(-0.02, 0.02);
+          } else if (mode === "pollen") {
+            vel.array[i*3+0] = rand(-0.03, 0.03);
+            vel.array[i*3+1] = rand(-0.04, -0.005);
+            vel.array[i*3+2] = rand(-0.03, 0.03);
+          } else { // rain
+            vel.array[i*3+0] = rand(-0.02, 0.02);
+            vel.array[i*3+1] = rand(-0.30, -0.10);
+            vel.array[i*3+2] = rand(-0.02, 0.02);
+          }
+        }
+
+        // wind wobble
+        const wob = Math.sin((pos.array[i*3+1] + performance.now()*0.001) * 1.2) * 0.001;
+        pos.array[i*3+0] += wob;
+      }
+      pos.needsUpdate = true;
+      vel.needsUpdate = true;
+    }
+
+    function updateFlower(t){
+      const tCycle = (t - cycleStart) % CYCLE;
+      const { grow01, bloom01, dry01 } = flowerPhase(tCycle);
+
+      // Seed rises then disappears into growth
+      seed.visible = tCycle < 7.5;
+      seed.position.y = lerp(0.08, 0.55, clamp01(tCycle/7.5));
+      seed.scale.setScalar(lerp(1.0, 0.25, clamp01(tCycle/7.5)));
+
+      // Stem grows
+      const stemH = lerp(0.6, 4.0, grow01);
+      stem.scale.y = stemH / 4.0;
+      stem.position.y = (stemH / 2.0);
+
+      // Leaves appear with growth
+      const leafPop = clamp01((grow01 - 0.18) / 0.22);
+      leaf1.scale.setScalar(lerp(0.05, 1.0, leafPop));
+      leaf2.scale.setScalar(lerp(0.05, 1.0, leafPop));
+
+      // Head follows top
+      head.position.y = stemH + 0.05;
+
+      // Petals open
+      const open = bloom01 * (1.0 - 0.75*dry01);
+      for (let i=0;i<petalMeshes.length;i++){
+        const p = petalMeshes[i];
+        const wav = Math.sin((t*2.4) + i) * 0.03; // living shimmer
+        p.scale.y = lerp(0.10, 1.05, open) + wav;
+        p.rotation.x = lerp(0.25, -0.25, open) + wav;
+
+        // drying droop
+        p.rotation.z = lerp(p.rotation.z, p.rotation.z + dry01*0.015, 0.02);
+      }
+
+      // Color shift into “dry”
+      const dryTint = new THREE.Color(0xb3834a); // dried petal color
+      petalMeshes.forEach(p=>{
+        const base = p.material.color.clone();
+        p.material.color.copy(base.lerp(dryTint, dry01*0.75));
+        p.material.emissiveIntensity = 0.25 * (1.0 - 0.75*dry01);
+        p.material.opacity = 1.0;
+        p.material.transparent = false;
+      });
+
+      // Stem dries a bit
+      const stemDry = new THREE.Color(0x6b6a3b);
+      stem.material.color.lerp(stemDry, dry01*0.20);
+      leaf1.material.color.lerp(stemDry, dry01*0.35);
+      leaf2.material.color.lerp(stemDry, dry01*0.35);
+
+      // Gentle sway (alive)
+      const sway = Math.sin(t*0.8) * 0.05;
+      flower.rotation.z = sway * (1.0 - 0.65*dry01);
+      head.rotation.y = Math.sin(t*0.6) * 0.25;
+
+      // Quotes timing (more frequent as it blooms, slower when drying)
+      const quoteInterval = (tCycle < GROW_DURATION) ? 6.0 : 8.5;
+      if (t - lastQuoteAt > quoteInterval) {
+        lastQuoteAt = t;
+        const q = QUOTES[quoteIndex++ % QUOTES.length];
+
+        let phaseLabel = "SEED";
+        if (tCycle < 6) phaseLabel = "SEED";
+        else if (tCycle < 18) phaseLabel = "GROWTH";
+        else if (tCycle < GROW_DURATION) phaseLabel = "BLOOM";
+        else phaseLabel = "DRYING";
+
+        showQuote(q, phaseLabel);
+      }
+
+      // Cat story beats
+      // mother appears early, then leaves, kitten stays and grows slowly
+      if (tCycle > 2.0 && tCycle < 9.0) {
+        if (!mother.visible) {
+          mother.visible = true;
+          popStory("A mother cat watches… then turns away.", 3300);
+        }
+        // mother drifts away
+        mother.position.x += 0.01;
+        mother.position.z -= 0.008;
+        mother.rotation.y += 0.01;
+      } else {
+        mother.visible = false;
+        mother.position.set(1.0, 0, -0.2);
+      }
+
+      // kitten grows across the whole cycle and “breathes”
+      const kittenGrow = lerp(0.45, 0.82, clamp01(tCycle / CYCLE));
+      const breathe = 1.0 + Math.sin(t*2.5)*0.03;
+      kitten.scale.setScalar(kittenGrow * breathe);
+      kitten.position.y = 0.04 + Math.abs(Math.sin(t*1.3))*0.01;
+      kitten.rotation.y = Math.sin(t*0.7)*0.22;
+    }
+
+    // ---------- Resize ----------
+    function onResize(){
+      const w = window.innerWidth, h = window.innerHeight;
+      camera.aspect = w/h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w,h);
+      composer.setSize(w,h);
+      bloom.setSize(w,h);
+    }
+    window.addEventListener("resize", onResize);
+
+    // ---------- Animate ----------
+    let last = now();
+    function animate(){
+      requestAnimationFrame(animate);
+      const t = now();
+      const dt = Math.min(0.033, t-last);
+      last = t;
+
+      updateSeasonSystem(t);
+      updateFlower(t);
+
+      // “Weather changes every second” feel: micro-variation
+      rain.rotation.y   += dt * 0.15;
+      snow.rotation.y   += dt * 0.08;
+      pollen.rotation.y += dt * 0.20;
+      leaves.rotation.y += dt * 0.12;
+
+      updateParticles(rain, "rain");
+      updateParticles(snow, "snow");
+      updateParticles(pollen, "pollen");
+      updateParticles(leaves, "leaves");
+
+      // camera gentle drift
+      camera.position.x = Math.sin(t*0.15) * 0.35;
+      camera.lookAt(0, 2.2, 0);
+
+      composer.render();
+    }
+    animate();
+
+    // Start with one quote quickly
+    setTimeout(()=>showQuote(pick(QUOTES), "SEED"), 900);
+
+  </script>
+</body>
+</html>
