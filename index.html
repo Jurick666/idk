@@ -166,11 +166,17 @@
     <div id="errorBanner"></div>
   </div>
 
-  <!-- REAL mp3 must exist at assets/music.mp3 -->
+  <!-- Music in repo root -->
   <audio id="bgm" src="./music.mp3" preload="auto" loop></audio>
 
-  <script type="module">
-    // ---------- Visible error helper ----------
+  <!-- Three.js (global) + postprocessing (global) -->
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+  <script>
+    // ---------- Error helper ----------
     const errorBanner = document.getElementById("errorBanner");
     function showError(msg){
       console.error(msg);
@@ -179,26 +185,24 @@
         <div style="font-weight:700; margin-bottom:6px;">Something failed to load</div>
         <div>${msg}</div>
         <div style="margin-top:10px; opacity:.85;">
-          Quick checks:
+          Checks:
           <ul style="margin:6px 0 0 18px;">
-            <li>Open <code>/assets/music.mp3</code> directly to confirm it exists</li>
-            <li>Try disabling adblock (it can block CDN imports)</li>
+            <li>Confirm <code>music.mp3</code> exists at <code>/idk/music.mp3</code></li>
+            <li>Try disabling adblock (it can block CDN scripts)</li>
             <li>Open DevTools → Console for the red error</li>
           </ul>
         </div>
       `;
     }
 
-    // ---------- Import Three (reliable CDN) ----------
-    let THREE, EffectComposer, RenderPass, UnrealBloomPass;
-    try {
-      THREE = await import("https://unpkg.com/three@0.160.0/build/three.module.js");
-      ({ EffectComposer } = await import("https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js"));
-      ({ RenderPass } = await import("https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/RenderPass.js"));
-      ({ UnrealBloomPass } = await import("https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js"));
-    } catch (e) {
-      showError("Three.js imports failed (network/adblock/CDN). Error: " + (e?.message ?? e));
-      throw e;
+    // ---------- Guard: Three + postprocessing present ----------
+    if (!window.THREE) {
+      showError("Three.js did not load. (CDN blocked).");
+      throw new Error("THREE missing");
+    }
+    if (!THREE.EffectComposer || !THREE.RenderPass || !THREE.UnrealBloomPass) {
+      showError("Postprocessing scripts did not load (EffectComposer/RenderPass/Bloom).");
+      throw new Error("Postprocessing missing");
     }
 
     // ---------- Helpers ----------
@@ -235,7 +239,6 @@
       root.appendChild(meta);
       root.appendChild(text);
       quoteWrap.prepend(root);
-
       while (quoteWrap.children.length > 4) quoteWrap.removeChild(quoteWrap.lastChild);
 
       root.animate(
@@ -282,19 +285,19 @@
         started = true;
         if (audioText) audioText.textContent = "Playing";
       } catch(e){
-        popStory("Music blocked. Confirm /assets/music.mp3 is real and tap again.", 4200);
+        popStory("Music blocked (browser rule). Tap again, and confirm /music.mp3 loads.", 4200);
       }
     }
 
-    audioGate?.addEventListener("click", (e) => {
+    audioGate.addEventListener("click", (e) => {
       const tag = (e.target?.tagName || "").toLowerCase();
       if (tag === "input" || tag === "button") return;
       startMusic();
     });
 
-    vol?.addEventListener("input", () => { if (bgm) bgm.volume = Number(vol.value); });
+    vol.addEventListener("input", () => { if (bgm) bgm.volume = Number(vol.value); });
 
-    muteBtn?.addEventListener("click", (e) => {
+    muteBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       if (!bgm) return;
       bgm.muted = !bgm.muted;
@@ -307,15 +310,13 @@
       else if (started) bgm.play().catch(()=>{});
     });
 
-    // ---------- WebGL/Renderer setup ----------
+    // ---------- Renderer setup ----------
     const container = document.getElementById("app");
-    if (!container) showError("Missing #app container.");
-
     let renderer;
     try{
       renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false, powerPreference:"high-performance" });
     }catch(e){
-      showError("WebGLRenderer failed. Your browser/GPU may not support WebGL. Error: " + (e?.message ?? e));
+      showError("WebGLRenderer failed. Your browser/GPU may not support WebGL. " + (e?.message ?? e));
       throw e;
     }
 
@@ -332,9 +333,9 @@
     camera.position.set(0, 2.3, 8.6);
 
     // Postprocessing
-    const composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.7, 0.85);
+    const composer = new THREE.EffectComposer(renderer);
+    composer.addPass(new THREE.RenderPass(scene, camera));
+    const bloom = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.7, 0.85);
     composer.addPass(bloom);
 
     // Lights
@@ -498,7 +499,7 @@
     const particleGroup = new THREE.Group();
     scene.add(particleGroup);
 
-    function makeParticles(count, color, size=0.025){
+    function makeParticles(count, color, size){
       const geo = new THREE.BufferGeometry();
       const pos = new Float32Array(count*3);
       const vel = new Float32Array(count*3);
@@ -607,7 +608,6 @@
       seasonLabel.textContent = (mix > 0.5) ? b.name : a.name;
       bloom.strength = 0.35 + 0.35 * (wx.pollen + 0.25);
 
-      // subtle decor refresh occasionally
       if (Math.random() < 0.01) buildDecorRing(lerp(a.decorHue[0], b.decorHue[0], mix), lerp(a.decorHue[1], b.decorHue[1], mix));
     }
 
@@ -737,7 +737,9 @@
     }
     window.addEventListener("resize", onResize);
 
-    // ---------- Animate ----------
+    // Start
+    seasonLabel.textContent = "READY";
+
     let last = now();
     function animate(){
       requestAnimationFrame(animate);
@@ -763,12 +765,9 @@
 
       composer.render();
     }
-
-    // Start!
-    seasonLabel.textContent = "READY";
     animate();
-    setTimeout(()=>showQuote(pick(QUOTES), "SEED"), 900);
 
+    setTimeout(()=>showQuote(pick(QUOTES), "SEED"), 900);
   </script>
 </body>
 </html>
